@@ -1,0 +1,246 @@
+# ============================================================================
+# LA TdG — COMPRESSIÓ D'ÀUDIO I VÍDEO (10/10/2026)
+# ============================================================================
+#
+# Va a: latdg/media  →  .github/workflows/comprimir.yml
+#
+# El publicador d'Apps Script encarrega aquí la compressió de cada àudio o
+# vídeo de MEDIA_ARXIUS. Aquest procés:
+#   1. es baixa l'original del disc dur (credencials als secrets del repo);
+#   2. el comprimeix amb ffmpeg:
+#        · ÀUDIO: MP3 mono, com a màxim 38 MB (Telegram 50, Mastodon 40).
+#          Bitrat de 64 kbps, que baixa sol si la gravació és molt llarga.
+#          Si ja és un MP3 de menys de 20 MB, es copia sense tocar-lo.
+#        · VÍDEO: MP4 H.264, com a màxim 15 MB (WhatsApp 16). Si el vídeo
+#          és massa llarg per cabre-hi amb una qualitat digna, el límit
+#          passa a 48 MB (Telegram). Si ja és un MP4 H.264 de menys de
+#          15 MB, només es reordena per a reproducció ràpida.
+#   3. el desa a la branca "fitxers" i el publica a GitHub Pages:
+#        https://latdg.github.io/media/a/<nom>.mp3
+#        https://latdg.github.io/media/v/<nom>.mp4
+#   4. esborra els fitxers de més de 60 dies perquè el repositori no creixi.
+#
+# SECRETS NECESSARIS (Settings > Secrets and variables > Actions):
+#   MEDIA_SERVER_BASE      http://...glddns.com:8081/disk1_part1/laTdG/xarxes/
+#   MEDIA_SERVER_USER
+#   MEDIA_SERVER_PASSWORD
+#
+# El repositori és públic (els minuts d'Actions són il·limitats i GitHub
+# Pages és gratuït), però l'adreça del disc dur i les credencials són
+# secrets: no apareixen enlloc, ni als registres.
+# ============================================================================
+
+name: Comprimir media
+run-name: "Comprimir ${{ inputs.sortida }} [${{ inputs.id }}]"
+
+on:
+  workflow_dispatch:
+    inputs:
+      origen:
+        description: "Ruta del fitxer dins de /xarxes/ (p. ex. videos/acte.mp4)"
+        required: true
+      sortida:
+        description: "Nom del fitxer comprimit (p. ex. acte.mp4)"
+        required: true
+      tipus:
+        description: "AUDIO o VIDEO"
+        required: true
+      id:
+        description: "Identificador de la petició"
+        required: false
+        default: "manual"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Una compressió darrere l'altra, perquè no es trepitgin en desar.
+concurrency:
+  group: media-latdg
+  cancel-in-progress: false
+
+env:
+  DIES_CONSERVACIO: 60
+  AUDIO_MAX_MB: 38
+  VIDEO_MAX_MB: 15
+  VIDEO_MAX_MB_LLARG: 48
+
+jobs:
+  comprimir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: github-pages
+      url: ${{ steps.desplegament.outputs.page_url }}
+
+    steps:
+      - name: Comprovar les dades
+        env:
+          ORIGEN: ${{ inputs.origen }}
+          SORTIDA: ${{ inputs.sortida }}
+          TIPUS: ${{ inputs.tipus }}
+        run: |
+          [[ "$SORTIDA" =~ ^[A-Za-z0-9._-]+\.(mp3|mp4)$ ]] || { echo "::error::Nom de sortida no vàlid: $SORTIDA"; exit 1; }
+          [[ "$ORIGEN" != *".."* && "$ORIGEN" != /* ]] || { echo "::error::Ruta d'origen no vàlida"; exit 1; }
+          [[ "$TIPUS" == "AUDIO" || "$TIPUS" == "VIDEO" ]] || { echo "::error::Tipus no vàlid: $TIPUS"; exit 1; }
+
+      - name: Instal·lar ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg > /dev/null
+          ffmpeg -version | head -n 1
+
+      - name: Descarregar l'original del disc dur
+        env:
+          BASE: ${{ secrets.MEDIA_SERVER_BASE }}
+          USUARI: ${{ secrets.MEDIA_SERVER_USER }}
+          CONTRASENYA: ${{ secrets.MEDIA_SERVER_PASSWORD }}
+          ORIGEN: ${{ inputs.origen }}
+        run: |
+          RUTA=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$ORIGEN")
+          curl -fsS --retry 3 --retry-delay 5 --max-time 1800 \
+            -u "$USUARI:$CONTRASENYA" \
+            -o original "${BASE%/}/$RUTA"
+          echo "Mida original: $(du -h original | cut -f1)"
+
+      - name: Preparar la carpeta publicada
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git clone -q --depth 1 --branch fitxers "$REPO_URL" lloc 2>/dev/null; then
+            echo "Branca fitxers carregada."
+          else
+            mkdir -p lloc
+            git -C lloc init -q -b fitxers
+            git -C lloc remote add origin "$REPO_URL"
+            echo "Primera execució: es crea la branca fitxers."
+          fi
+
+      - name: Comprimir
+        env:
+          SORTIDA: ${{ inputs.sortida }}
+          TIPUS: ${{ inputs.tipus }}
+        run: |
+          set -euo pipefail
+
+          DUR=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 original | cut -d. -f1 || true)
+          [[ "${DUR:-}" =~ ^[0-9]+$ ]] && [ "$DUR" -gt 0 ] || DUR=1
+          MIDA=$(stat -c%s original)
+          echo "Durada: ${DUR} s · Mida: $((MIDA / 1048576)) MB"
+
+          if [ "$TIPUS" = "AUDIO" ]; then
+
+            mkdir -p lloc/a
+            DESTI="lloc/a/$SORTIDA"
+            CODEC=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=nw=1:nk=1 original || true)
+
+            if [ "$CODEC" = "mp3" ] && [ "$MIDA" -le $((20 * 1048576)) ]; then
+              cp original "$DESTI"
+              echo "Àudio ja lleuger: es copia sense tocar."
+            else
+              KBPS=$(( AUDIO_MAX_MB * 8 * 1048576 / 1000 / DUR ))
+              [ "$KBPS" -gt 64 ] && KBPS=64
+              [ "$KBPS" -lt 24 ] && KBPS=24
+              FREQ=44100
+              [ "$KBPS" -lt 32 ] && FREQ=22050
+              echo "Àudio: MP3 mono a ${KBPS} kbps"
+              ffmpeg -hide_banner -loglevel error -y -i original \
+                -vn -ac 1 -ar "$FREQ" -c:a libmp3lame -b:a "${KBPS}k" "$DESTI"
+            fi
+
+          else
+
+            mkdir -p lloc/v
+            DESTI="lloc/v/$SORTIDA"
+            VCODEC=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of default=nw=1:nk=1 original || true)
+            FET=0
+
+            if [ "$VCODEC" = "h264" ] && [ "$MIDA" -le $((VIDEO_MAX_MB * 1048576)) ]; then
+              if ffmpeg -hide_banner -loglevel error -y -i original -c copy -movflags +faststart "$DESTI"; then
+                echo "Vídeo ja lleuger: només s'ha reordenat (sense perdre qualitat)."
+                FET=1
+              fi
+            fi
+
+            if [ "$FET" = "0" ]; then
+
+              TOTAL=$(( VIDEO_MAX_MB * 8 * 1048576 / 1000 * 95 / 100 / DUR ))
+              ABR=96
+              [ "$TOTAL" -lt 500 ] && ABR=64
+              VBR=$(( TOTAL - ABR ))
+
+              if [ "$VBR" -lt 300 ]; then
+                echo "::warning::Vídeo llarg: no cap als 16 MB de WhatsApp amb una qualitat digna. Es prepara per a Telegram (fins a ${VIDEO_MAX_MB_LLARG} MB)."
+                TOTAL=$(( VIDEO_MAX_MB_LLARG * 8 * 1048576 / 1000 * 95 / 100 / DUR ))
+                ABR=96
+                VBR=$(( TOTAL - ABR ))
+              fi
+
+              [ "$VBR" -gt 2500 ] && VBR=2500
+              [ "$VBR" -lt 150 ] && VBR=150
+
+              if [ "$VBR" -ge 1500 ]; then COSTAT=1280
+              elif [ "$VBR" -ge 700 ]; then COSTAT=960
+              else COSTAT=640
+              fi
+
+              FILTRE="scale=w='min(${COSTAT},iw)':h='min(${COSTAT},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
+              echo "Vídeo: H.264 a ${VBR} kbps, costat llarg ${COSTAT} px, àudio ${ABR} kbps"
+
+              ffmpeg -hide_banner -loglevel error -y -i original -vf "$FILTRE" -fpsmax 30 \
+                -c:v libx264 -preset veryfast -b:v "${VBR}k" \
+                -pass 1 -passlogfile /tmp/passada -an -f null /dev/null
+
+              ffmpeg -hide_banner -loglevel error -y -i original -vf "$FILTRE" -fpsmax 30 \
+                -c:v libx264 -preset veryfast -b:v "${VBR}k" \
+                -maxrate "$(( VBR * 3 / 2 ))k" -bufsize "$(( VBR * 2 ))k" \
+                -pass 2 -passlogfile /tmp/passada -pix_fmt yuv420p \
+                -c:a aac -b:a "${ABR}k" -ac 2 -movflags +faststart "$DESTI"
+            fi
+          fi
+
+          echo "Resultat: $(du -h "$DESTI" | cut -f1)"
+          echo "RELATIU=${DESTI#lloc/}" >> "$GITHUB_ENV"
+
+      - name: Desar i esborrar els fitxers antics
+        run: |
+          set -euo pipefail
+          cd lloc
+          ARA=$(date +%s)
+          LIMIT=$(( ARA - DIES_CONSERVACIO * 86400 ))
+          touch registre.tsv
+
+          awk -F'\t' -v p="$RELATIU" '$2 != p' registre.tsv > registre.tmp
+          printf '%s\t%s\n' "$ARA" "$RELATIU" >> registre.tmp
+
+          awk -F'\t' -v l="$LIMIT" '$1 < l { print $2 }' registre.tmp | while read -r antic; do
+            rm -f -- "$antic"
+            echo "Esborrat per antic: $antic"
+          done
+
+          awk -F'\t' -v l="$LIMIT" '$1 >= l' registre.tmp > registre.tsv
+          rm -f registre.tmp
+
+          git config user.name "La TdG media"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan nova 2>/dev/null || true
+          git add -A
+          git commit -q -m "Comprimit: $RELATIU"
+          git push -q -f origin HEAD:fitxers
+          echo "Desat a la branca fitxers (sense historial, perquè el repositori no creixi)."
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: lloc
+
+      - id: desplegament
+        uses: actions/deploy-pages@v4
+
+      - name: Adreça pública
+        run: |
+          echo "https://latdg.github.io/media/${RELATIU}"
+          echo "✅ Publicat: https://latdg.github.io/media/${RELATIU}" >> "$GITHUB_STEP_SUMMARY"
