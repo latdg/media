@@ -98,6 +98,24 @@ jobs:
           CONTRASENYA: ${{ secrets.MEDIA_SERVER_PASSWORD }}
           ORIGEN: ${{ inputs.origen }}
         run: |
+          set -euo pipefail
+
+          # Canvi 10.10.2026: neteja l'adreça per si s'hi han enganxat espais,
+          # salts de línia, cometes o <>, i hi afegeix http:// si no hi és.
+          BASE=$(printf '%s' "$BASE" | tr -d '\r\n\t "'"'"'`<>')
+          case "$BASE" in http://*|https://*) ;; *) BASE="http://$BASE" ;; esac
+
+          # Diagnòstic sense mostrar mai l'adreça.
+          HOST=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlsplit(sys.argv[1]).hostname or "")' "$BASE")
+          echo "Diagnòstic: MEDIA_SERVER_BASE té ${#BASE} caràcters i el nom del servidor en té ${#HOST}."
+          [ -n "$HOST" ] || { echo "::error::El secret MEDIA_SERVER_BASE no conté cap adreça vàlida."; exit 1; }
+          if getent hosts "$HOST" > /dev/null; then
+            echo "DNS: GitHub troba el nom del disc dur."
+          else
+            echo "::error::GitHub no troba el nom del disc dur. Revisa el secret MEDIA_SERVER_BASE."
+            exit 1
+          fi
+
           RUTA=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$ORIGEN")
           curl -fsS --retry 3 --retry-delay 5 --max-time 1800 \
             -u "$USUARI:$CONTRASENYA" \
