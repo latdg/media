@@ -10,7 +10,7 @@
 #   2. el comprimeix amb ffmpeg:
 #        · ÀUDIO: MP3 mono, com a màxim 38 MB (Telegram 50, Mastodon 40).
 #          Bitrat de 64 kbps, que baixa sol si la gravació és molt llarga.
-#          Si ja és un MP3 de menys de 20 MB, es copia sense tocar-lo.
+#          Volum normalitzat a -16 LUFS (01.11.2026): tots els talls sonen igual de forts.
 #        · VÍDEO: MP4 H.264, com a màxim 15 MB (WhatsApp 16). Si el vídeo
 #          és massa llarg per cabre-hi amb una qualitat digna, el límit
 #          passa a 48 MB (Telegram). Si ja és un MP4 H.264 de menys de
@@ -154,16 +154,19 @@ jobs:
             DESTI="lloc/a/$SORTIDA"
             CODEC=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=nw=1:nk=1 original || true)
 
-            if [ "$CODEC" = "mp3" ] && [ "$MIDA" -le $((20 * 1048576)) ]; then
-              cp original "$DESTI"
-              echo "Àudio ja lleuger: es copia sense tocar."
-            else
-              KBPS=$(( AUDIO_MAX_MB * 8 * 1048576 / 1000 / DUR ))
-              [ "$KBPS" -gt 64 ] && KBPS=64
-              [ "$KBPS" -lt 24 ] && KBPS=24
-              FREQ=44100
-              [ "$KBPS" -lt 32 ] && FREQ=22050
-              echo "Àudio: MP3 mono a ${KBPS} kbps"
+            # 01.11.2026: tots els àudios surten amb el MATEIX VOLUM percebut
+            # (-16 LUFS, el nivell habitual dels pòdcasts; pics a -1,5 dB), per
+            # això ja no se'n copia cap sense tocar. Si la normalització falla,
+            # es fa la compressió de sempre.
+            KBPS=$(( AUDIO_MAX_MB * 8 * 1048576 / 1000 / DUR ))
+            [ "$KBPS" -gt 64 ] && KBPS=64
+            [ "$KBPS" -lt 24 ] && KBPS=24
+            FREQ=44100
+            [ "$KBPS" -lt 32 ] && FREQ=22050
+            echo "Àudio: MP3 mono a ${KBPS} kbps, volum normalitzat (-16 LUFS)"
+            if ! ffmpeg -hide_banner -loglevel error -y -i original \
+                -vn -af "loudnorm=I=-16:TP=-1.5:LRA=11" -ac 1 -ar "$FREQ" -c:a libmp3lame -b:a "${KBPS}k" "$DESTI"; then
+              echo "::warning::No s'ha pogut normalitzar el volum; es comprimeix sense normalitzar."
               ffmpeg -hide_banner -loglevel error -y -i original \
                 -vn -ac 1 -ar "$FREQ" -c:a libmp3lame -b:a "${KBPS}k" "$DESTI"
             fi
