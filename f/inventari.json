@@ -19,15 +19,6 @@
    "afegit": "2026-11-05"
   },
   {
-   "id": "20261006lamarsellesasencer",
-   "fitxer_original": "20261006lamarsellesasencer.mp3",
-   "fitxer": "20261006lamarsellesasencer.mp3",
-   "durada": 4484,
-   "mida": 26907969,
-   "data": "2026-10-06",
-   "afegit": "2026-11-05"
-  },
-  {
    "id": "20261006lamarsellesa",
    "fitxer_original": "20261006lamarsellesa.mp3",
    "fitxer": "20261006lamarsellesa.mp3",
@@ -101,6 +92,9 @@
   }
  ],
  "no_trobats": [],
- "total_mb": 116.6,
- "actualitzat": "2026-11-05T18:02:45Z"
+ "total_mb": 90.9,
+ "actualitzat": "2026-11-05T18:02:45Z",
+ "eliminats": [
+  "20261006lamarsellesasencer.mp3"
+ ]
 }
