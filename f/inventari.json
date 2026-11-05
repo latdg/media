@@ -1,0 +1,106 @@
+{
+ "audios": [
+  {
+   "id": "20261103evigo",
+   "fitxer_original": "20261103evigo.mp3",
+   "fitxer": "20261103evigo.mp3",
+   "durada": 4897,
+   "mida": 29387668,
+   "data": "2026-11-03",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20261016debatfoment",
+   "fitxer_original": "20261016debatfoment.mp3",
+   "fitxer": "20261016debatfoment.mp3",
+   "durada": 6514,
+   "mida": 39087541,
+   "data": "2026-10-16",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20261006lamarsellesasencer",
+   "fitxer_original": "20261006lamarsellesasencer.mp3",
+   "fitxer": "20261006lamarsellesasencer.mp3",
+   "durada": 4484,
+   "mida": 26907969,
+   "data": "2026-10-06",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20261006lamarsellesa",
+   "fitxer_original": "20261006lamarsellesa.mp3",
+   "fitxer": "20261006lamarsellesa.mp3",
+   "durada": 4044,
+   "mida": 24267930,
+   "data": "2026-10-06",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20260914fesl",
+   "fitxer_original": "20260914fesl.mp3",
+   "fitxer": "20260914fesl.mp3",
+   "durada": 250,
+   "mida": 1504566,
+   "data": "2026-09-14",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20260909pmare02",
+   "fitxer_original": "20260909pmaré02.mp3",
+   "fitxer": "20260909pmare02.mp3",
+   "durada": 34,
+   "mida": 206646,
+   "data": "2026-09-09",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20260909pmare01",
+   "fitxer_original": "20260909pmaré01.mp3",
+   "fitxer": "20260909pmare01.mp3",
+   "durada": 41,
+   "mida": 250219,
+   "data": "2026-09-09",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20260909emarques02",
+   "fitxer_original": "20260909emarquès02.mp3",
+   "fitxer": "20260909emarques02.mp3",
+   "durada": 21,
+   "mida": 127809,
+   "data": "2026-09-09",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20260909emarques01",
+   "fitxer_original": "20260909emarquès01.mp3",
+   "fitxer": "20260909emarques01.mp3",
+   "durada": 34,
+   "mida": 208841,
+   "data": "2026-09-09",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20260902bcuyas",
+   "fitxer_original": "20260902bcuyas.mp3",
+   "fitxer": "20260902bcuyas.mp3",
+   "durada": 17,
+   "mida": 102261,
+   "data": "2026-09-02",
+   "afegit": "2026-11-05"
+  },
+  {
+   "id": "20260901jfiga",
+   "fitxer_original": "20260901jfiga.mp3",
+   "fitxer": "20260901jfiga.mp3",
+   "durada": 36,
+   "mida": 219499,
+   "data": "2026-09-01",
+   "afegit": "2026-11-05"
+  }
+ ],
+ "no_trobats": [],
+ "total_mb": 116.6,
+ "actualitzat": "2026-11-05T18:02:45Z"
+}
