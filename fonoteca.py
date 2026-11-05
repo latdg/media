@@ -84,15 +84,22 @@ def durada(fitxer):
 
 
 def demanats(registre):
-    """Noms de fitxer que han d'entrar a la fonoteca."""
-    noms = []
+    """Noms de fitxer que han d'entrar a la fonoteca, i els eliminats a la pàgina.
+    Si no es pot llegir el catàleg, eliminats és None (llavors no s'esborra res)."""
+    noms, eliminats = [], set()
     try:
         with urllib.request.urlopen(CATALEG_URL + "?t=%d" % time.time(), timeout=30) as r:
             for a in json.load(r).get("audios", []):
-                if a.get("fitxer"):
-                    noms.append(a["fitxer"].strip().split("/")[-1])
+                nom = (a.get("fitxer") or "").strip().split("/")[-1]
+                if not nom:
+                    continue
+                if a.get("eliminat"):
+                    eliminats.add(nom)
+                else:
+                    noms.append(nom)
     except Exception as e:
         print("⚠️ No s'ha pogut llegir el catàleg de la fonoteca:", e)
+        eliminats = None
     if registre and os.path.exists(registre):
         for linia in open(registre, encoding="utf-8"):
             parts = linia.rstrip("\n").split("\t")
@@ -100,10 +107,10 @@ def demanats(registre):
                 noms.append(parts[1][2:])
     vist, sortida = set(), []
     for n in noms:
-        if n and n not in vist:
+        if n and n not in vist and not (eliminats and n in eliminats):
             vist.add(n)
             sortida.append(n)
-    return sortida
+    return sortida, eliminats
 
 
 def arxiva(sortida, registre, max_minuts, kbps):
@@ -116,8 +123,23 @@ def arxiva(sortida, registre, max_minuts, kbps):
     ids = {a["id"] for a in inv["audios"]}
     no_trobats = []
     inici, nous = time.time(), 0
+    noms, eliminats = demanats(registre)
 
-    for nom in demanats(registre):
+    # 05.11.2026: àudios eliminats a la pàgina. Es treu la còpia de la
+    # fonoteca (GitHub); l'original del disc dur NO es toca mai.
+    if eliminats is not None:
+        for nom in sorted(eliminats):
+            a = per_nom.pop(nom, None)
+            if a:
+                try:
+                    os.remove(os.path.join(sortida, a["fitxer"]))
+                except FileNotFoundError:
+                    pass
+                inv["audios"] = [x for x in inv["audios"] if x["fitxer_original"] != nom]
+                print("🗑️ Eliminat de la fonoteca:", nom, "(l'original del disc dur es manté)")
+        inv["eliminats"] = sorted(eliminats)
+
+    for nom in noms:
         if nom in per_nom:
             continue
         if time.time() - inici > max_minuts * 60:
