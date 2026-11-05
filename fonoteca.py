@@ -64,6 +64,8 @@ def llista(url, profunditat=0, max_prof=5, vistos=None):
                 cos = r.read().decode("utf-8", "replace")
             hrefs = [urllib.parse.urljoin(url, h) for h in re.findall(r"<(?:\w+:)?href>([^<]+)</(?:\w+:)?href>", cos, re.I)]
             print("  · WebDAV", amaga(rel(url)), "→", len(hrefs), "entrades")
+            if not hrefs:
+                print("  · Resposta WebDAV (inici):", amaga(cos[:900]).replace("\n", " "))
         except Exception as e:
             print("  ⚠️ No es pot llistar", amaga(rel(url)), "(ni GET ni WebDAV) →", amaga(e))
             return []
