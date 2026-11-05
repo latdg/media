@@ -252,6 +252,17 @@ jobs:
           git push -q -f origin HEAD:fitxers
           echo "Desat a la branca fitxers (sense historial, perquè el repositori no creixi)."
 
+      # 05.11.2026: la web també porta els àudios de La TdG fonoteca (branca
+      # «fonoteca»), perquè no desapareguin cada vegada que es publica.
+      - name: Afegir la fonoteca a la web
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git clone -q --depth 1 --branch fonoteca "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" fono 2>/dev/null; then
+            rm -rf lloc/f && cp -r fono/f lloc/f
+            echo "Fonoteca afegida a la web."
+          fi
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
