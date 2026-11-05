@@ -65,7 +65,7 @@ def llista(url, profunditat=0, max_prof=5, vistos=None):
             hrefs = [urllib.parse.urljoin(url, h) for h in re.findall(r"<(?:\w+:)?href>([^<]+)</(?:\w+:)?href>", cos, re.I)]
             print("  · WebDAV", amaga(rel(url)), "→", len(hrefs), "entrades")
             if not hrefs:
-                print("  · Resposta WebDAV (inici):", amaga(cos[:900]).replace("\n", " "))
+                sonda_webdav(url)
         except Exception as e:
             print("  ⚠️ No es pot llistar", amaga(rel(url)), "(ni GET ni WebDAV) →", amaga(e))
             return []
@@ -82,6 +82,24 @@ def llista(url, profunditat=0, max_prof=5, vistos=None):
         elif absoluta.lower().endswith(AUDIO):
             sortida.append(absoluta)
     return sorted(set(sortida))
+
+
+def sonda_webdav(url):
+    """Diagnòstic: prova variants de PROPFIND i diu què respon el servidor."""
+    variants = [("sense cos, Depth 1", None, "1"), ("propname", b'<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:propname/></D:propfind>', "1"),
+                ("prop concrets", b'<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/><D:getcontentlength/><D:getlastmodified/><D:resourcetype/></D:prop></D:propfind>', "1"),
+                ("sense cos, Depth 0", None, "0")]
+    for nom, cos, depth in variants:
+        for u in (url, url.rstrip("/")):
+            try:
+                h = {"Authorization": AUTH, "Depth": depth, "User-Agent": "LaTdG-fonoteca/1.0"}
+                if cos: h["Content-Type"] = "text/xml; charset=utf-8"
+                req = urllib.request.Request(u, method="PROPFIND", data=cos, headers=h)
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    b = r.read()
+                    print("    ·", nom, "/" if u.endswith("/") else "sense /", "→", r.status, len(b), "bytes", amaga(b[:400].decode("utf-8", "replace")).replace("\n", " "))
+            except Exception as e:
+                print("    ·", nom, "→", amaga(e))
 
 
 def rel(url):
