@@ -48,14 +48,27 @@ def llista(url, profunditat=0, max_prof=5, vistos=None):
     if url in vistos or profunditat > max_prof:
         return []
     vistos.add(url)
+    cos, hrefs = None, []
     try:
         with demana(url) as r:
             cos = r.read().decode("utf-8", "replace")
+            hrefs = re.findall(r'href\s*=\s*["\']([^"\']+)["\']', cos, re.I)
     except Exception as e:
-        print("  ⚠️ No es pot llegir", amaga(rel(url)), "→", amaga(e))
-        return []
+        print("  · GET", amaga(rel(url)), "→", amaga(e))
+    if not hrefs:
+        # El servidor no dona llistat HTML: provem WebDAV (PROPFIND).
+        try:
+            req = urllib.request.Request(url, method="PROPFIND", data=b'<?xml version="1.0"?><propfind xmlns="DAV:"><allprop/></propfind>',
+                                         headers={"Authorization": AUTH, "Depth": "1", "Content-Type": "application/xml", "User-Agent": "LaTdG-fonoteca/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                cos = r.read().decode("utf-8", "replace")
+            hrefs = [urllib.parse.urljoin(url, h) for h in re.findall(r"<(?:\w+:)?href>([^<]+)</(?:\w+:)?href>", cos, re.I)]
+            print("  · WebDAV", amaga(rel(url)), "→", len(hrefs), "entrades")
+        except Exception as e:
+            print("  ⚠️ No es pot llistar", amaga(rel(url)), "(ni GET ni WebDAV) →", amaga(e))
+            return []
     sortida = []
-    for href in re.findall(r'href\s*=\s*["\']([^"\']+)["\']', cos, re.I):
+    for href in hrefs:
         href = html.unescape(href)
         if href.startswith(("?", "#", "javascript:", "mailto:")):
             continue
@@ -117,6 +130,11 @@ def explora(carpetes):
     for c in carpetes:
         url = urllib.parse.urljoin(BASE, c)
         print("== Carpeta:", amaga(rel(url) or c))
+        try:
+            with demana(url, "OPTIONS", 30) as r:
+                print("  · Servidor:", amaga(r.headers.get("Server")), "· mètodes:", r.headers.get("Allow") or r.headers.get("DAV") or "?")
+        except Exception as e:
+            print("  · OPTIONS →", amaga(e), "· Servidor:", amaga(getattr(e, "headers", {}).get("Server") if hasattr(e, "headers") else ""))
         fitxers = llista(url)
         total = 0
         anys = {}
