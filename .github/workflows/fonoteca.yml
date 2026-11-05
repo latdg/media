@@ -1,0 +1,131 @@
+# ============================================================================
+# LA TdG FONOTECA — ARXIU PERMANENT DELS ÀUDIOS DE «DECLARACIONS» (05.11.2026)
+# ============================================================================
+#
+# Cada nit (i a mà, des d'Actions) revisa la carpeta de declaracions del disc
+# dur i, per a cada àudio que encara no té, el baixa, el comprimeix per a veu
+# (MP3 mono, volum igualat a -16 LUFS) i el desa a la branca «fonoteca».
+#
+#   https://latdg.github.io/media/f/<id>.mp3     → cada àudio
+#   https://latdg.github.io/media/f/inventari.json → la llista que llegeix
+#                                                   la pàgina La TdG fonoteca
+#
+# Diferència amb comprimir.yml: aquí NO s'esborra res als 60 dies. Si un
+# original desapareix del disc dur, la còpia de la fonoteca es queda.
+# Les fitxes (títol, qui parla, categoria…) es fan a la pàgina de la
+# fonoteca, amb clau; aquest procés només s'ocupa dels fitxers.
+#
+# Mode «explora»: només llista què hi ha a la carpeta, sense baixar res.
+# Fa servir els mateixos secrets que comprimir.yml (MEDIA_SERVER_*).
+# ============================================================================
+
+name: Fonoteca
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "arxiva (afegeix els àudios nous) o explora (només llista)"
+        required: true
+        default: "arxiva"
+      carpetes:
+        description: "Carpetes dins de /xarxes/, separades per comes"
+        required: false
+        default: "declaracions/"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: fonoteca-latdg
+  cancel-in-progress: false
+
+env:
+  FONOTECA_KBPS: 48
+  FONOTECA_MAX_MINUTS: 300
+
+jobs:
+  fonoteca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: codi
+
+      - name: Instal·lar ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg > /dev/null
+
+      - name: Explorar la carpeta
+        if: ${{ inputs.mode == 'explora' }}
+        env:
+          MEDIA_SERVER_BASE: ${{ secrets.MEDIA_SERVER_BASE }}
+          MEDIA_SERVER_USER: ${{ secrets.MEDIA_SERVER_USER }}
+          MEDIA_SERVER_PASSWORD: ${{ secrets.MEDIA_SERVER_PASSWORD }}
+          FONOTECA_CARPETES: ${{ inputs.carpetes }}
+        run: python3 codi/fonoteca.py explora | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Carregar la branca fonoteca
+        if: ${{ inputs.mode != 'explora' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git clone -q --depth 1 --branch fonoteca "$REPO_URL" fono 2>/dev/null; then
+            echo "Branca fonoteca carregada."
+          else
+            mkdir -p fono/f
+            git -C fono init -q -b fonoteca
+            git -C fono remote add origin "$REPO_URL"
+            echo "Primera execució: es crea la branca fonoteca."
+          fi
+
+      - name: Arxivar els àudios nous
+        if: ${{ inputs.mode != 'explora' }}
+        env:
+          MEDIA_SERVER_BASE: ${{ secrets.MEDIA_SERVER_BASE }}
+          MEDIA_SERVER_USER: ${{ secrets.MEDIA_SERVER_USER }}
+          MEDIA_SERVER_PASSWORD: ${{ secrets.MEDIA_SERVER_PASSWORD }}
+          FONOTECA_CARPETES: ${{ inputs.carpetes || 'declaracions/' }}
+          FONOTECA_SORTIDA: fono/f
+        run: |
+          python3 codi/fonoteca.py arxiva | tee -a "$GITHUB_STEP_SUMMARY"
+          cd fono
+          git config user.name "La TdG fonoteca"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Cap canvi a la fonoteca."
+          else
+            git commit -q -m "Fonoteca: $(date +%d.%m.%Y)"
+            git push -q origin HEAD:fonoteca
+          fi
+
+      - name: Muntar la web (fitxers del publicador + fonoteca)
+        if: ${{ inputs.mode != 'explora' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git clone -q --depth 1 --branch fitxers "$REPO_URL" lloc 2>/dev/null || mkdir -p lloc
+          rm -rf lloc/.git lloc/f
+          cp -r fono/f lloc/f
+
+      - uses: actions/configure-pages@v5
+        if: ${{ inputs.mode != 'explora' }}
+
+      - uses: actions/upload-pages-artifact@v3
+        if: ${{ inputs.mode != 'explora' }}
+        with:
+          path: lloc
+
+      - uses: actions/deploy-pages@v4
+        if: ${{ inputs.mode != 'explora' }}
