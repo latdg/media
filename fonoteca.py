@@ -3,11 +3,12 @@
 # LA TdG FONOTECA — arxiu permanent dels àudios de «declaracions» (05.11.2026)
 #
 # El disc dur no deixa llistar carpetes, així que la fonoteca no busca a
-# cegues: arxiva els àudios que li arriben per dues vies:
-#   1. tots els àudios que el publicador ja ha difós (registre.tsv de la
-#      branca «fitxers»): entren sols, sense fer res;
-#   2. els que s'afegeixen a mà a la pàgina La TdG fonoteca (dades/fonoteca.json
-#      del repo latdg/tauler), amb el nom del fitxer de /xarxes/declaracions/.
+# cegues: arxiva NOMÉS els àudios que el publicador ja ha difós (registre.tsv
+# de la branca «fitxers»). Entren sols, amb la fitxa que s'omple al publicador.
+#
+# 07.11.2026: ja no s'afegeixen àudios a mà des de la pàgina La TdG fonoteca
+# (abans, amb el nom del fitxer de /xarxes/declaracions/). Del catàleg
+# (dades/fonoteca.json de latdg/tauler) només es llegeixen els eliminats.
 #
 # Per a cada àudio que encara no té: el baixa del disc dur, el comprimeix per
 # a veu (MP3 mono, volum igualat a -16 LUFS) i el desa a la carpeta de sortida
@@ -84,8 +85,9 @@ def durada(fitxer):
 
 
 def demanats(registre):
-    """Noms de fitxer que han d'entrar a la fonoteca, i els eliminats a la pàgina.
-    Si no es pot llegir el catàleg, eliminats és None (llavors no s'esborra res)."""
+    """Noms de fitxer que han d'entrar a la fonoteca (els que ha difós el
+    publicador), i els eliminats a la pàgina. Si no es pot llegir el catàleg,
+    eliminats és None (llavors no s'esborra res)."""
     noms, eliminats = [], set()
     try:
         with urllib.request.urlopen(CATALEG_URL + "?t=%d" % time.time(), timeout=30) as r:
@@ -93,10 +95,9 @@ def demanats(registre):
                 nom = (a.get("fitxer") or "").strip().split("/")[-1]
                 if not nom:
                     continue
+                # 07.11.2026: les fitxes del catàleg ja no fan entrar cap àudio.
                 if a.get("eliminat"):
                     eliminats.add(nom)
-                else:
-                    noms.append(nom)
     except Exception as e:
         print("⚠️ No s'ha pogut llegir el catàleg de la fonoteca:", e)
         eliminats = None

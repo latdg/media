@@ -3,10 +3,8 @@
 # ============================================================================
 #
 # Cada hora (i a mà, des d'Actions) mira quins àudios han d'entrar a la
-# fonoteca i arxiva els que encara no hi són:
-#   · els que el publicador ja ha difós (entren sols);
-#   · els que s'afegeixen a mà a la pàgina La TdG fonoteca, amb el nom del
-#     fitxer de /xarxes/declaracions/.
+# fonoteca i arxiva els que encara no hi són: només els que el publicador ja
+# ha difós (07.11.2026: ja no se n'afegeixen a mà des de la pàgina).
 # Cada àudio es baixa del disc dur, es comprimeix per a veu (MP3 mono 48 kbps,
 # volum igualat a -16 LUFS) i es desa a la branca «fonoteca»:
 #
