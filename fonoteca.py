@@ -33,6 +33,8 @@ USUARI = os.environ.get("MEDIA_SERVER_USER", "")
 CONTRA = os.environ.get("MEDIA_SERVER_PASSWORD", "")
 AUTH = "Basic " + base64.b64encode((USUARI + ":" + CONTRA).encode()).decode()
 _parts = urllib.parse.urlsplit(BASE)
+LOCAL_NOM, _, LOCAL_CAMI = os.environ.get("FONOTECA_LOCAL", "").partition("|")
+LOCAL_CAMI = os.path.abspath(LOCAL_CAMI) if LOCAL_CAMI else ""
 
 
 def amaga(text):
@@ -114,6 +116,16 @@ def demanats(registre):
     return sortida, eliminats
 
 
+def kbps_de(fitxer):
+    """Kbps d'un MP3 (0 si no es pot saber)."""
+    try:
+        s = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=bit_rate", "-of", "default=nw=1:nk=1", fitxer],
+                           capture_output=True, text=True, timeout=60).stdout.strip()
+        return int(s) // 1000
+    except Exception:
+        return 0
+
+
 def arxiva(sortida, registre, max_minuts, kbps):
     os.makedirs(sortida, exist_ok=True)
     cami_inv = os.path.join(sortida, "inventari.json")
@@ -146,31 +158,51 @@ def arxiva(sortida, registre, max_minuts, kbps):
         if time.time() - inici > max_minuts * 60:
             print("⏱️ Límit de temps d'aquesta passada; la resta, a la propera.")
             break
-        url = url_de(nom)
-        existeix, data_fitxer = capcalera(url)
-        if not existeix:
-            no_trobats.append(nom)
-            continue
-        print("➕", nom)
-        try:
-            subprocess.run(["curl", "-fsS", "--retry", "3", "--max-time", "1800", "-u", USUARI + ":" + CONTRA, "-o", "original", url],
-                           check=True, stderr=subprocess.DEVNULL)
-        except Exception:
-            print("   ⚠️ No s'ha pogut baixar; es tornarà a provar a la propera passada.")
-            continue
         base_id = slug(nom.rsplit(".", 1)[0])
         ident, n = base_id, 2
         while ident in ids:
             ident, n = "%s-%d" % (base_id, n), n + 1
         desti = os.path.join(sortida, ident + ".mp3")
-        ordre = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", "original", "-vn",
-                 "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ac", "1", "-ar", "44100",
-                 "-c:a", "libmp3lame", "-b:a", "%dk" % kbps, desti]
-        if subprocess.run(ordre).returncode != 0:
-            del ordre[8:10]
+
+        # 18.11.2026: si el publicador ja té el MP3 (branca «fitxers», carpeta a/),
+        # es copia tal qual: ja està comprimit i amb el volum igualat, i entra al
+        # moment. Només si té menys qualitat que la de la fonoteca (àudios molt
+        # llargs) o ja no hi és (passats 60 dies) es recodifica l'original del disc dur.
+        publicat = os.path.join(os.path.dirname(registre or ""), "a", nom)
+        # (marge de 2 kbps: ffprobe calcula el bitrate per mida i durada i pot donar 47 en un de 48)
+        if nom.lower().endswith(".mp3") and os.path.isfile(publicat) and kbps_de(publicat) >= kbps - 2:
+            print("➕", nom, "(còpia del MP3 del publicador)")
+            subprocess.run(["cp", publicat, "original"], check=True)
+            subprocess.run(["cp", publicat, desti], check=True)
+            data_fitxer = ""
+        else:
+            # 18.11.2026: si el publicador ja té l'original baixat (FONOTECA_LOCAL=nom|camí),
+            # es fa servir aquest i no es torna a baixar del disc dur.
+            if LOCAL_NOM == nom and os.path.isfile(LOCAL_CAMI):
+                print("➕", nom, "(àudio llarg: versió de la fonoteca a partir de l'original)")
+                subprocess.run(["cp", LOCAL_CAMI, "original"], check=True)
+                data_fitxer = ""
+            else:
+                url = url_de(nom)
+                existeix, data_fitxer = capcalera(url)
+                if not existeix:
+                    no_trobats.append(nom)
+                    continue
+                print("➕", nom)
+                try:
+                    subprocess.run(["curl", "-fsS", "--retry", "3", "--max-time", "1800", "-u", USUARI + ":" + CONTRA, "-o", "original", url],
+                                   check=True, stderr=subprocess.DEVNULL)
+                except Exception:
+                    print("   ⚠️ No s'ha pogut baixar; es tornarà a provar a la propera passada.")
+                    continue
+            ordre = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", "original", "-vn",
+                     "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ac", "1", "-ar", "44100",
+                     "-c:a", "libmp3lame", "-b:a", "%dk" % kbps, desti]
             if subprocess.run(ordre).returncode != 0:
-                print("   ⚠️ ffmpeg no l'ha pogut convertir.")
-                continue
+                del ordre[8:10]
+                if subprocess.run(ordre).returncode != 0:
+                    print("   ⚠️ ffmpeg no l'ha pogut convertir.")
+                    continue
         entrada = {
             "id": ident,
             "fitxer_original": nom,

@@ -69,7 +69,7 @@ env:
 jobs:
   comprimir:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60   # 18.11.2026: abans 40; ara també arxiva els plens llargs a la fonoteca
     environment:
       name: github-pages
       url: ${{ steps.desplegament.outputs.page_url }}
@@ -252,13 +252,67 @@ jobs:
           git push -q -f origin HEAD:fitxers
           echo "Desat a la branca fitxers (sense historial, perquè el repositori no creixi)."
 
+      # 18.11.2026: UNA SOLA CODIFICACIÓ. L'àudio que s'acaba de comprimir entra
+      # a La TdG fonoteca en aquesta mateixa passada, sense esperar la passada
+      # de cada hora. Si té la qualitat de la fonoteca (48 kbps o més: tots els
+      # que duren menys d'1 h 50 min, aprox.), es COPIA tal qual: és el mateix
+      # fitxer que es difon i el que sona sempre. Només els àudios molt llargs
+      # (plens), que per cabre a WhatsApp surten a menys qualitat, es tornen a
+      # codificar a 48 kbps a partir de l'original ja baixat (doble codificació).
+      # Si aquest pas falla, la publicació continua igual i el recull la passada
+      # de cada hora de fonoteca.yml.
+      - name: Arxivar a la fonoteca
+        if: ${{ inputs.tipus == 'AUDIO' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MEDIA_SERVER_BASE: ${{ secrets.MEDIA_SERVER_BASE }}
+          MEDIA_SERVER_USER: ${{ secrets.MEDIA_SERVER_USER }}
+          MEDIA_SERVER_PASSWORD: ${{ secrets.MEDIA_SERVER_PASSWORD }}
+          SORTIDA: ${{ inputs.sortida }}
+        run: |
+          set -uo pipefail
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          ARREL="$PWD"
+          mkdir -p arxiu
+          if ! git clone -q --depth 1 --branch "${{ github.event.repository.default_branch }}" "$REPO_URL" codi 2>/dev/null || [ ! -f codi/fonoteca.py ]; then
+            echo "::warning::No s'ha pogut carregar fonoteca.py; l'àudio entrarà a la propera passada de fonoteca.yml."
+            exit 0
+          fi
+          for intent in 1 2 3; do
+            rm -rf fono
+            if ! git clone -q --depth 1 --branch fonoteca "$REPO_URL" fono 2>/dev/null; then
+              echo "::warning::No s'ha pogut carregar la branca fonoteca; l'àudio entrarà a la propera passada de fonoteca.yml."
+              exit 0
+            fi
+            ( cd arxiu && FONOTECA_SORTIDA="$ARREL/fono/f" FONOTECA_REGISTRE="$ARREL/lloc/registre.tsv" \
+                FONOTECA_LOCAL="${SORTIDA}|$ARREL/original" FONOTECA_MAX_MINUTS=15 FONOTECA_KBPS=48 \
+                python3 "$ARREL/codi/fonoteca.py" ) | tee -a "$GITHUB_STEP_SUMMARY"
+            cd fono
+            git config user.name "La TdG fonoteca"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            if git diff --cached --quiet; then
+              echo "Cap canvi a la fonoteca."; cd "$ARREL"; exit 0
+            fi
+            git commit -q -m "Fonoteca: $(date +%d.%m.%Y) (${SORTIDA})"
+            if git push -q origin HEAD:fonoteca; then
+              echo "🔊 ${SORTIDA} ja és a La TdG fonoteca."; cd "$ARREL"; exit 0
+            fi
+            cd "$ARREL"
+            echo "La branca fonoteca ha canviat mentrestant; es torna a provar ($intent/3)."
+            sleep 10
+          done
+          echo "::warning::No s'ha pogut desar a la fonoteca; l'àudio entrarà a la propera passada de fonoteca.yml."
+
       # 05.11.2026: la web també porta els àudios de La TdG fonoteca (branca
       # «fonoteca»), perquè no desapareguin cada vegada que es publica.
+      # 18.11.2026: si el pas anterior ja l'ha carregat, es fa servir aquest.
       - name: Afegir la fonoteca a la web
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git clone -q --depth 1 --branch fonoteca "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" fono 2>/dev/null; then
+          if [ -d fono/f ] || git clone -q --depth 1 --branch fonoteca "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" fono 2>/dev/null; then
             rm -rf lloc/f && cp -r fono/f lloc/f
             echo "Fonoteca afegida a la web."
           fi
