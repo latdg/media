@@ -1,6 +1,15 @@
 {
  "audios": [
   {
+   "id": "20261118catalaitu",
+   "fitxer_original": "20261118catalaitu.mp3",
+   "fitxer": "20261118catalaitu.mp3",
+   "durada": 3205,
+   "mida": 19234707,
+   "data": "2026-11-18",
+   "afegit": "2026-11-18"
+  },
+  {
    "id": "20261103evigo",
    "fitxer_original": "20261103evigo.mp3",
    "fitxer": "20261103evigo.mp3",
@@ -92,8 +101,8 @@
   }
  ],
  "no_trobats": [],
- "total_mb": 90.9,
- "actualitzat": "2026-11-05T18:02:45Z",
+ "total_mb": 109.3,
+ "actualitzat": "2026-11-18T20:52:28Z",
  "eliminats": [
   "20261006lamarsellesasencer.mp3"
  ]
