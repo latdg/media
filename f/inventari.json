@@ -1,6 +1,15 @@
 {
  "audios": [
   {
+   "id": "20261125violentometro",
+   "fitxer_original": "20261125violentometro.mp3",
+   "fitxer": "20261125violentometro.mp3",
+   "durada": 5024,
+   "mida": 40198939,
+   "data": "2026-11-25",
+   "afegit": "2026-11-25"
+  },
+  {
    "id": "20261118catalaitu",
    "fitxer_original": "20261118catalaitu.mp3",
    "fitxer": "20261118catalaitu.mp3",
@@ -101,8 +110,8 @@
   }
  ],
  "no_trobats": [],
- "total_mb": 109.3,
- "actualitzat": "2026-11-18T20:52:28Z",
+ "total_mb": 147.6,
+ "actualitzat": "2026-11-25T20:27:33Z",
  "eliminats": [
   "20261006lamarsellesasencer.mp3"
  ]
